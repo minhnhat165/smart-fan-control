@@ -11,11 +11,13 @@ float temp_measure = 0;
 bool timer_enable = false;
 String timer_start = "00:00";
 String timer_end = "00:00";
-int system_time_hours = 0;
-int system_time_mins = 0;
+String system_time = "00:00";
 
 String dataSend = "";
 String dataRead = "";
+
+bool isSending = true;
+bool isReading = false;
 
 // key for json data
 #define KEY_DATA_FAN_ENABLE "fan_enable"
@@ -48,18 +50,21 @@ void setup() {
   //connect filebase
   Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
   timeClient.begin();
-  timeClient.setTimeOffset(25200);// pack time vn
+  timeClient.setTimeOffset(25200);  // pack time vn
 }
 
 void loop() {
   // handle error
   if (handleFirebaseError()) return;
-  readDataFromFirebase();
-  if (millis() - last >= 1000) {
+  if (millis() - last >= 2000) {
     last = millis();
     sendDataToUno();
   }
-  delay(1000);
+  readDataFromUno();
+  // setSystemTime();
+  // controlByTime();
+  // sendDataToUno();
+  // readDataFromUno();
   // sendDataToFirebase();
 }
 
@@ -74,11 +79,25 @@ bool handleFirebaseError() {
 }
 
 void readDataFromUno() {
+  while (unoEspSerial.available()) {
+    Serial.println("had data");
+    char readChar = (char)unoEspSerial.read();
+    if (readChar != '\n') {
+      dataRead += readChar;
+    } else {
+      handleJsonData(dataRead);
+      sendDataToFirebase();
+      dataRead = "";
+    }
+  }
 }
 
 void sendDataToUno() {
-  String dataSend = jsonWrite();
-  unoEspSerial.print(dataSend + '\n');
+  readDataFromFirebase();
+  delay(500);
+  setSystemTime();
+  controlByTime();
+  unoEspSerial.print(jsonWrite() + '\n');
   unoEspSerial.flush();  // wait end
 }
 
@@ -89,8 +108,8 @@ void readDataFromFirebase() {
   fan_speed = Firebase.getInt("/fan/speed");
   temp_enable = Firebase.getBool("/temp/enable");
   timer_enable = Firebase.getBool("/timer/enable");
-  String timer_start = Firebase.getString("/timer/start");
-  String timer_end = Firebase.getString("/timer/end");
+  timer_start = Firebase.getString("/timer/start");
+  timer_end = Firebase.getString("/timer/end");
 }
 
 void sendDataToFirebase() {
@@ -102,17 +121,18 @@ void sendDataToFirebase() {
 
 void setSystemTime() {
   timeClient.update();
-  system_time_hours = timeClient.getHours();
-  system_time_mins = timeClient.getMinutes();
+  system_time = String(timeClient.getHours()) + ":" + String(timeClient.getMinutes());
 }
 
 void controlByTime() {
-  String system_time_string = system_time_hours + ":" + system_time_mins;
   if (timer_enable) {
-    if (system_time_string == timer_start) {
+    if (system_time == timer_start) {
       fan_enable = true;
-    } else if (system_time_string == timer_end) {
+      Firebase.setBool("/fan/enable", fan_enable);
+
+    } else if (system_time == timer_end) {
       fan_enable = false;
+      Firebase.setBool("/fan/enable", fan_enable);
     }
   }
 }
@@ -120,12 +140,12 @@ void controlByTime() {
 String jsonWrite() {
   DynamicJsonBuffer jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
-  root[KEY_DATA_FAN_ENABLE] = fan_enable; 
+  root[KEY_DATA_FAN_ENABLE] = fan_enable;
   root[KEY_DATA_TEMP_ENABLE] = temp_enable;
   String result;
   root.printTo(result);
   return result;
-}; 
+};
 
 void handleJsonData(String data) {
   DynamicJsonBuffer jsonBuffer;
@@ -136,9 +156,14 @@ void handleJsonData(String data) {
     return;
   }
 
-  if (root.containsKey(KEY_DATA_FAN_STATE)) {
-    String data = root[KEY_DATA_FAN_STATE];
-    isOnFan = data.toInt();
-    Serial.print(data);
+  if (root.containsKey(KEY_DATA_FAN_ENABLE)) {
+    String data = root[KEY_DATA_FAN_ENABLE];
+    fan_enable = stringToBool(data);
+    Serial.print(fan_enable);
   }
 };
+
+bool stringToBool(String value) {
+  if (value == "true") return true;
+  return false;
+}
