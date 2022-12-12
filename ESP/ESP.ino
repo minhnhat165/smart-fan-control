@@ -4,24 +4,27 @@
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
 #include <SoftwareSerial.h>
-bool fan_enable = false;
-int fan_speed = 0;
-bool temp_enable = false;
-float temp_measure = 0;
-bool timer_enable = false;
-String timer_start = "00:00";
-String timer_end = "00:00";
-String system_time = "00:00";
 
-String dataSend = "";
+bool fan_enable;
+int fan_speed;
+bool temp_enable;
+float temp_measure;
+float temp_threshold;
+bool timer_enable;
+String timer_start;
+String timer_end;
+String system_time;
+
 String dataRead = "";
 
-bool isSending = true;
-bool isReading = false;
+bool firstSendDataToUno = false;
 
 // key for json data
-#define KEY_DATA_FAN_ENABLE "fan_enable"
-#define KEY_DATA_TEMP_ENABLE "temp_enable"
+#define KEY_DATA_FAN_ENABLE "fanEnable"
+#define KEY_DATA_TEMP_ENABLE "tempEnable"
+#define KEY_DATA_TEMP_MEASURE "tempMeasure"
+#define KEY_DATA_FAN_SPEED "fanSpeed"
+#define KEY_DATA_TEMP_THRESHOLD "tempTh"
 
 #define RX D5
 #define TX D6
@@ -35,8 +38,6 @@ WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
 int last = 0;
-
-
 
 void setup() {
   Serial.begin(9600);
@@ -56,16 +57,11 @@ void setup() {
 void loop() {
   // handle error
   if (handleFirebaseError()) return;
-  if (millis() - last >= 2000) {
+  if (millis() - last >= 1000) {
     last = millis();
     sendDataToUno();
   }
   readDataFromUno();
-  // setSystemTime();
-  // controlByTime();
-  // sendDataToUno();
-  // readDataFromUno();
-  // sendDataToFirebase();
 }
 
 
@@ -79,45 +75,81 @@ bool handleFirebaseError() {
 }
 
 void readDataFromUno() {
-  while (unoEspSerial.available()) {
-    Serial.println("had data");
+   while (unoEspSerial.available()) {
     char readChar = (char)unoEspSerial.read();
     if (readChar != '\n') {
       dataRead += readChar;
     } else {
       handleJsonData(dataRead);
-      sendDataToFirebase();
       dataRead = "";
     }
   }
 }
 
 void sendDataToUno() {
-  readDataFromFirebase();
-  delay(500);
-  setSystemTime();
+  String dataSend = hasChangeFirebaseJson();
   controlByTime();
-  unoEspSerial.print(jsonWrite() + '\n');
-  unoEspSerial.flush();  // wait end
+  if (dataSend != "") {
+    Serial.println("send " + dataSend);
+    unoEspSerial.print(dataSend + '\n');
+    unoEspSerial.flush();  // wait end
+  }
 }
 
 
 
-void readDataFromFirebase() {
-  fan_enable = Firebase.getBool("/fan/enable");
-  fan_speed = Firebase.getInt("/fan/speed");
-  temp_enable = Firebase.getBool("/temp/enable");
+String hasChangeFirebaseJson() {
+  bool new_fan_enable = Firebase.getBool("/fan/enable");
+  int new_fan_speed = Firebase.getInt("/fan/speed");
+  bool new_temp_enable = Firebase.getBool("/temp/enable");
+  float new_temp_threshold = Firebase.getFloat("temp/threshold");
   timer_enable = Firebase.getBool("/timer/enable");
-  timer_start = Firebase.getString("/timer/start");
-  timer_end = Firebase.getString("/timer/end");
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+
+  bool isChange = false;
+
+  if (!firstSendDataToUno) {
+    fan_speed = new_fan_speed;
+    root[KEY_DATA_FAN_SPEED] = fan_speed;
+    temp_enable = new_temp_enable;
+    root[KEY_DATA_TEMP_ENABLE] = temp_enable;
+    temp_threshold = new_temp_threshold;
+    root[KEY_DATA_TEMP_THRESHOLD] = temp_threshold;
+    fan_enable = new_fan_enable;
+    root[KEY_DATA_FAN_ENABLE] = fan_enable;
+    isChange = true;
+    firstSendDataToUno = true;
+  } else {
+    if (new_fan_enable != fan_enable) {
+      fan_enable = new_fan_enable;
+      root[KEY_DATA_FAN_ENABLE] = fan_enable;
+      isChange = true;
+    }
+    if (new_fan_speed != fan_speed) {
+      fan_speed = new_fan_speed;
+      root[KEY_DATA_FAN_SPEED] = fan_speed;
+      isChange = true;
+    }
+    if (new_temp_enable != temp_enable) {
+      temp_enable = new_temp_enable;
+      root[KEY_DATA_TEMP_ENABLE] = temp_enable;
+      isChange = true;
+    }
+
+    if (new_temp_threshold != temp_threshold) {
+      temp_threshold = new_temp_threshold;
+      root[KEY_DATA_TEMP_THRESHOLD] = temp_threshold;
+      isChange = true;
+    }
+  }
+
+  if (!isChange) return "";
+  String result;
+  root.printTo(result);
+  return result;
 }
 
-void sendDataToFirebase() {
-  Firebase.setBool("/fan/enable", fan_enable);
-  Firebase.setInt("/fan/speed", fan_speed);
-  Firebase.setBool("/temp/enable", temp_enable);
-  Firebase.setBool("/timer/enable", timer_enable);
-}
 
 void setSystemTime() {
   timeClient.update();
@@ -126,28 +158,22 @@ void setSystemTime() {
 
 void controlByTime() {
   if (timer_enable) {
+    setSystemTime();
+    timer_start = Firebase.getString("/timer/start");
+    timer_end = Firebase.getString("/timer/end");
     if (system_time == timer_start) {
-      fan_enable = true;
-      Firebase.setBool("/fan/enable", fan_enable);
+      Firebase.setBool("/fan/enable", true);
 
     } else if (system_time == timer_end) {
-      fan_enable = false;
-      Firebase.setBool("/fan/enable", fan_enable);
+      Firebase.setBool("/fan/enable", false);
     }
+    delay(500);
   }
 }
 
-String jsonWrite() {
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& root = jsonBuffer.createObject();
-  root[KEY_DATA_FAN_ENABLE] = fan_enable;
-  root[KEY_DATA_TEMP_ENABLE] = temp_enable;
-  String result;
-  root.printTo(result);
-  return result;
-};
 
 void handleJsonData(String data) {
+  Serial.println("data handle" + data);
   DynamicJsonBuffer jsonBuffer;
   JsonObject& root = jsonBuffer.parseObject(data);
 
@@ -158,10 +184,23 @@ void handleJsonData(String data) {
 
   if (root.containsKey(KEY_DATA_FAN_ENABLE)) {
     String data = root[KEY_DATA_FAN_ENABLE];
-    fan_enable = stringToBool(data);
-    Serial.print(fan_enable);
+    Firebase.setBool("/fan/enable", stringToBool(data));
+  }
+  if (root.containsKey(KEY_DATA_FAN_SPEED)) {
+    String data = root[KEY_DATA_FAN_SPEED];
+    Firebase.setBool("/fan/speed", data.toInt());
+  }
+  if (root.containsKey(KEY_DATA_TEMP_ENABLE)) {
+    String data = root[KEY_DATA_TEMP_ENABLE];
+    Firebase.setBool("/temp/enable", stringToBool(data));
+  }
+
+  if (root.containsKey(KEY_DATA_TEMP_MEASURE)) {
+    String data = root[KEY_DATA_TEMP_MEASURE];
+    Firebase.setFloat("/temp/measure", data.toFloat());
   }
 };
+
 
 bool stringToBool(String value) {
   if (value == "true") return true;

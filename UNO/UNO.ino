@@ -9,11 +9,18 @@ const int DHTTYPE = DHT11;
 DHT dht(DHTPIN, DHTTYPE);
 //
 bool fan_enable = false;
-int fan_speed = 0;
+int fan_speed = 1;
 bool temp_enable = false;
 float temp_measure = 33.0;
-int last = 0;
-float TEMP_THRESHOLD = 33.0;
+float temp_measure_old = 00.0;
+float temp_threshold = 33.0;
+
+bool espConnected = false;
+
+// speed by temp
+// float temp_threshold_one = 30.0;
+// float temp_threshold_two = 31.0;
+// float temp_threshold_three = 32.0;
 
 // Cam bien hong ngoai
 const int receiverPin = A2;  // chân digital 8 dùng để đọc tín hiệu
@@ -26,15 +33,14 @@ bool isSending = true;
 bool isReading = true;
 
 // key for json data
-#define KEY_DATA_FAN_ENABLE "fan_enable"
-#define KEY_DATA_TEMP_ENABLE "temp_enable"
-#define KEY_DATA_TEMP_MEASURE "temp_measure"
-
+#define KEY_DATA_FAN_ENABLE "fanEnable"
+#define KEY_DATA_TEMP_ENABLE "tempEnable"
+#define KEY_DATA_TEMP_MEASURE "tempMeasure"
+#define KEY_DATA_FAN_SPEED "fanSpeed"
+#define KEY_DATA_TEMP_THRESHOLD "tempTh"
 // function declare
 void readDataFromEsp();
-void sendDataToEsp();
-void handleFanState();
-String jsonWrite();                // convert to json data to send
+void handleFanState();             // convert to json data to send
 void handleJsonData(String data);  // convert json data to data can handle
 
 // define uart
@@ -54,73 +60,56 @@ void setup() {
   unoEspSerial.begin(9600);
   irrecv.enableIRIn();
   pinMode(FAN_CONTROL_PIN, OUTPUT);
-
-  // analogWrite(FAN_CONTROL_PIN, 0);
+  OFF_FAN;
+  dht.begin();
 }
 
 void loop() {
   readDataFromEsp();
-  // delay(5000);
-  // Serial.println("1");
-  // analogWrite(FAN_CONTROL_PIN, 300);
-  // digitalWrite(FAN_CONTROL_PIN, LOW);
-  // delay(5000);
-  // Serial.println("2");
-  // digitalWrite(FAN_CONTROL_PIN, HIGH);
-
-  // analogWrite(FAN_CONTROL_PIN, 1000);
-  // Serial.println("3");
-  // readTemp();
+  readTemp();
   controlByRemote();
-  // controlByTemp();
+  controlByTemp();
   controlFanState();
-  // sendDataToEsp();
-  // delay(1000);
-  // if (millis() - last >= 10000) {
-  //   last = millis();
-  //   Serial.println("send");
-  //   sendDataToEsp();
-  // }
 }
 
 
 void readDataFromEsp() {
-  ;
-  while (unoEspSerial.available()) {
-    char readChar = (char)unoEspSerial.read();
-    if (readChar != '\n') {
-      dataRead += readChar;
-    } else {
-      // Serial.println("read data form esp: " + dataRead);
-      handleJsonData(dataRead);
-      dataRead = "";
-      // isReading = false;
-    }
+  // while (unoEspSerial.available()) {
+
+  //   char readChar = (char)unoEspSerial.read();
+  //   if (readChar != '\n') {
+  //     dataRead += readChar;
+  //   } else {
+  //     handleJsonData(dataRead);
+  //     dataRead = "";
+  //     // espConnected = true;
+  //   }
+  // }
+  if (unoEspSerial.available()) {
+    String dataRead = unoEspSerial.readString();
+    handleJsonData(dataRead);
+    espConnected = true;
   }
 }
 
-void sendDataToEsp() {
-  Serial.println("send data");
-  String dataSend = jsonWrite();
-  Serial.println("send data" + dataSend);
-  unoEspSerial.print(dataSend + '\n');
+
+void sendUart(String data) {
+  Serial.println("Send " + data);
+  unoEspSerial.print(data + '\n');
   unoEspSerial.flush();  // wait end
 }
 
-String jsonWrite() {
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& root = jsonBuffer.createObject();
-  root[KEY_DATA_FAN_ENABLE] = fan_enable;
-  root[KEY_DATA_TEMP_ENABLE] = temp_enable;
-  root[KEY_DATA_TEMP_MEASURE] = temp_measure;
-  String result;
-  root.printTo(result);
+
+String jsonWriteOne(String key, String value) {
+
+  String result = String("{\"") + key + String("\":\"") + value + String("\"}");
   return result;
-};
+}
 
 
 void handleJsonData(String data) {
-  DynamicJsonBuffer jsonBuffer;
+  Serial.println("read " + data);
+  DynamicJsonBuffer jsonBuffer(200);
   JsonObject& root = jsonBuffer.parseObject(data);
 
   if (!root.success()) {
@@ -130,63 +119,126 @@ void handleJsonData(String data) {
 
   if (root.containsKey(KEY_DATA_FAN_ENABLE)) {
     String data = root[KEY_DATA_FAN_ENABLE];
-
     fan_enable = stringToBool(data);
-    Serial.println(fan_enable);
+    Serial.println("fan enable " + data);
+  }
+  if (root.containsKey(KEY_DATA_FAN_SPEED)) {
+    String data = root[KEY_DATA_FAN_SPEED];
+    fan_speed = data.toInt();
+    Serial.println("fan speed " + data);
   }
   if (root.containsKey(KEY_DATA_TEMP_ENABLE)) {
     String data = root[KEY_DATA_TEMP_ENABLE];
     temp_enable = stringToBool(data);
-    Serial.println(temp_enable);
+    Serial.println("temp enable " + data);
+  }
+
+  if (root.containsKey(KEY_DATA_TEMP_THRESHOLD)) {
+    String data = root[KEY_DATA_TEMP_THRESHOLD];
+    temp_threshold = data.toFloat();
+    Serial.println("temp threshold " + data);
   }
 };
 
 void controlFanState() {
-  if (fan_enable) ON_FAN;
-  else OFF_FAN;
+  if (fan_enable) {
+    ON_FAN;
+    // analogWrite(FAN_CONTROL_PIN, 1000);
+    // controlFanSpeed();
+  } else OFF_FAN;
+}
+
+void controlFanSpeed() {
+  switch (fan_speed) {
+    case 1:
+      Serial.println(1);
+      analogWrite(FAN_CONTROL_PIN, 300);
+      break;
+    case 2:
+      Serial.println(2);
+      analogWrite(FAN_CONTROL_PIN, 700);
+      break;
+    case 3:
+      Serial.println(3);
+      analogWrite(FAN_CONTROL_PIN, 1023);
+      break;
+  }
 }
 
 void readTemp() {
+  delay(1000);
   temp_measure = dht.readTemperature();
+  Serial.println(temp_measure);
+  if (abs(temp_measure - temp_measure_old) >= 0.1 && espConnected) {
+    Serial.println(temp_measure - temp_measure_old);
+    temp_measure_old = temp_measure;
+    String dataSend = jsonWriteOne(KEY_DATA_TEMP_MEASURE, String(temp_measure));
+    sendUart(dataSend);
+  }
 }
 
 void controlByTemp() {
   if (!temp_enable) return;
-
-  if (temp_measure > TEMP_THRESHOLD) {
+  if (temp_measure > temp_threshold) {
+    if (fan_enable) return;
+    Serial.println("on");
     fan_enable = true;
+    String dataSend = jsonWriteOne(KEY_DATA_FAN_ENABLE, boolToString(fan_enable));  // send new value
+    sendUart(dataSend);
   } else {
+    if (!fan_enable) return;
     fan_enable = false;
+    Serial.println("off");
+    String dataSend = jsonWriteOne(KEY_DATA_FAN_ENABLE, boolToString(fan_enable));  // send new value
+    sendUart(dataSend);
   }
 }
 
 void controlByRemote() {
   if (irrecv.decode(&results))  // nếu nhận được tín hiệu
   {
+
+
     unsigned int value = results.value;
+    if (temp_enable && value != 4335) {  // nếu điều khiển bằng remote tắt chế độ bật tắt bằng nhiệt độ
+      Serial.print("off");
+      temp_enable = false;
+      sendUart(jsonWriteOne(KEY_DATA_TEMP_ENABLE, "false"));
+    }
     Serial.println(value);
     switch (value) {
       case 26775:
       case 65535:
-        fan_enable = false;
-        Serial.println("tat");
+        fan_enable = !fan_enable;
+        sendUart(jsonWriteOne(KEY_DATA_FAN_ENABLE, boolToString(fan_enable)));
         delay(500);
         break;
-      case 12495:
-      case 32255:
-      case 255:
-        fan_enable = true;
-        Serial.println("bat");
+      case 4335:
+        temp_enable = !temp_enable;
+        Serial.println(temp_enable);
+        sendUart(jsonWriteOne(KEY_DATA_TEMP_ENABLE, boolToString(temp_enable)));
         delay(500);
         break;
+        // case 17085:
+        //   fan_speed = 1;
+        //   break;
+        // case 19125:
+        //   fan_speed = 2;
+        //   break;
+        // case 21165:
+        //   fan_speed = 3;
+        //   break;
     }
-    sendDataToEsp();
   }
-
   irrecv.resume();  // Receive the next value
 }
 
 bool stringToBool(String value) {
   if (value == "true") return true;
   return false;
+}
+
+String boolToString(bool value) {
+  if (value) return "true";
+  return "false";
 }
