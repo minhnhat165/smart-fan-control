@@ -1,26 +1,34 @@
 #include <ArduinoJson.h>
 #include <SoftwareSerial.h>
 #include "DHT.h"
-#include <IRremote.h>  // thư viện hỗ trợ IR remote
+#include <IRremote.h>
+#include <Servo.h>
+
 // default config
 // Cam bien nhiet do & do am
 const int DHTPIN = A0;
 const int DHTTYPE = DHT11;
 DHT dht(DHTPIN, DHTTYPE);
-//
-bool fan_enable = false;
-int fan_speed = 1;
 bool temp_enable = false;
 float temp_measure = 33.0;
 float temp_measure_old = 00.0;
 float temp_threshold = 33.0;
 
-bool espConnected = false;
+// FAN CONFIG
+bool fan_enable = false;
+int fan_speed = 1;
 
-// speed by temp
-// float temp_threshold_one = 30.0;
-// float temp_threshold_two = 31.0;
-// float temp_threshold_three = 32.0;
+
+// servo config
+int servo = 9;
+int goc = 0;
+Servo myServo;
+bool servoEnabled = false;                // servo enabled flag
+unsigned long servoTimer = 0;             // servo timer
+const int SERVO_MIN_ANGLE = 0;            // minimum servo angle
+const int SERVO_MAX_ANGLE = 180;          // maximum servo angle
+const int SERVO_MOVEMENT_DURATION = 500;  // duration of servo movement
+const int SERVO_MOVEMENT_INTERVAL = 10;   // interval between servo movements
 
 // Cam bien hong ngoai
 const int receiverPin = A2;  // chân digital 8 dùng để đọc tín hiệu
@@ -31,6 +39,11 @@ String dataSend = "";
 String dataRead = "";
 bool isSending = true;
 bool isReading = true;
+int analogPin = A5;
+int value;
+int mosfet_output;
+
+
 
 // key for json data
 #define KEY_DATA_FAN_ENABLE "fanEnable"
@@ -47,9 +60,12 @@ void handleJsonData(String data);  // convert json data to data can handle
 #define RX 8
 #define TX 9
 SoftwareSerial unoEspSerial = SoftwareSerial(RX, TX);
+bool espConnected = false;
+
 
 // declare pinmode
-#define FAN_CONTROL_PIN 3
+#define FAN_CONTROL_PIN 6
+#define MOSFET_PIN 3
 
 // control fan
 #define OFF_FAN digitalWrite(FAN_CONTROL_PIN, LOW)
@@ -59,17 +75,35 @@ void setup() {
   Serial.begin(9600);
   unoEspSerial.begin(9600);
   irrecv.enableIRIn();
-  pinMode(FAN_CONTROL_PIN, OUTPUT);
+  pinMode(MOSFET_PIN, mosfet_output);
+  pinMode(analogPin, INPUT);
   OFF_FAN;
+  myServo.attach(servo);
   dht.begin();
 }
 
+
+
+
 void loop() {
-  readDataFromEsp();
-  readTemp();
-  controlByRemote();
-  controlByTemp();
-  controlFanState();
+  // readDataFromEsp();
+  // readTemp();
+  // controlByRemote();
+  // controlByTemp();
+  // controlFanState();
+  // controlFanSpeed();
+  // if the servo is enabled, move it smoothly back and forth
+  if (servoEnabled) {
+    unsigned long elapsedTime = millis() - servoTimer;                          // calculate elapsed time since last servo movement
+    if (elapsedTime <= SERVO_MOVEMENT_DURATION) {                               // if servo movement is not complete
+      float progress = float(elapsedTime) / SERVO_MOVEMENT_DURATION;            // calculate movement progress (0-1)
+      int targetAngle = map(progress, 0, 1, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);  // calculate target servo angle based on progress
+      myservo.write(targetAngle);                                               // move the servo to the target angle
+      delay(SERVO_MOVEMENT_INTERVAL);                                           // wait for servo movement interval
+    } else {                                                                    // if servo movement is complete
+      servoTimer = millis();                                                    // reset the servo timer
+    }
+  }
 }
 
 
@@ -91,6 +125,37 @@ void readDataFromEsp() {
     espConnected = true;
   }
 }
+
+const turnOnRotate() {
+  while (enableRotate) {
+    if (enableRotate) {
+      Serial.print(enableRotate);
+      myServo.write(goc);
+      goc = myServo.read();
+      Serial.print("Góc hiện tại: ");
+      Serial.println(goc);
+      if (goc >= max) {
+        isMinus = true;
+      }
+      if (goc <= min) {
+        isMinus = false;
+      }
+      if (isMinus) {
+        goc -= 5;
+      } else {
+        goc += 5;
+      }
+      Serial.println(goc);
+      delay(100);
+    }
+  };
+}
+
+const turnOffRotate() {
+  enableRotate = false;
+}
+
+
 
 
 void sendUart(String data) {
@@ -146,6 +211,9 @@ void controlFanState() {
     // analogWrite(FAN_CONTROL_PIN, 1000);
     // controlFanSpeed();
   } else OFF_FAN;
+}
+
+void controlServo() {
 }
 
 void controlFanSpeed() {
@@ -219,15 +287,19 @@ void controlByRemote() {
         sendUart(jsonWriteOne(KEY_DATA_TEMP_ENABLE, boolToString(temp_enable)));
         delay(500);
         break;
-        // case 17085:
-        //   fan_speed = 1;
-        //   break;
-        // case 19125:
-        //   fan_speed = 2;
-        //   break;
-        // case 21165:
-        //   fan_speed = 3;
-        //   break;
+      case 17085:
+        fan_speed = 1;
+        break;
+      case 19125:
+        fan_speed = 2;
+        break;
+      case 21165:
+        fan_speed = 3;
+        break;
+      case 0x807FA05F:                 // toggle servo position
+        servoEnabled = !servoEnabled;  // toggle the servo enabled flag
+        servoTimer = millis();         // reset the servo timer
+        break;
     }
   }
   irrecv.resume();  // Receive the next value

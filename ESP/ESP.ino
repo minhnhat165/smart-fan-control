@@ -161,6 +161,7 @@ void controlByTime() {
     setSystemTime();
     timer_start = Firebase.getString("/timer/start");
     timer_end = Firebase.getString("/timer/end");
+    Serial.print(system_time + " " + timer_start);
     if (system_time == timer_start) {
       Firebase.setBool("/fan/enable", true);
 
