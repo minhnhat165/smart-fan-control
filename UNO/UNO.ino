@@ -16,6 +16,7 @@ float temp_threshold = 33.0;
 
 // FAN CONFIG
 bool fan_enable = false;
+bool prev_fan_enable = true;
 int fan_speed = 1;
 
 
@@ -43,6 +44,10 @@ bool isReading = true;
 int analogPin = A5;
 int value;
 int mosfet_output;
+
+bool isPlus = true;
+
+// tes
 
 
 
@@ -87,54 +92,31 @@ void setup() {
 
 
 void loop() {
-  // readDataFromEsp();
-  // readTemp();
-  // controlByRemote();
-  // controlByTemp();
-  // controlFanState();
-  // controlFanSpeed();
+    readDataFromEsp();
+    readTemp();
+    controlByRemote();
+    controlByTemp();
+    controlFanState();
+    // controlFanSpeed();
   // if the servo is enabled, move it smoothly back and forth
-    //   my_servo.write(0);
-    // goc = my_servo.read();
-    // Serial.print("Góc hiện tại: "); Serial.println(goc);
-    // delay(1000);
-  
-    // my_servo.write(90);
-    // goc = my_servo.read();
-    // Serial.print("Góc hiện tại: "); Serial.println(goc);
-    // delay(1000);
-  
-    // my_servo.write(180);
-    // goc = my_servo.read();
-    // Serial.print("Góc hiện tại: "); Serial.println(goc);
-    // delay(1000);
-  if (servoEnabled) {
-    unsigned long elapsedTime = millis() - servoTimer;                      // calculate elapsed time since last servo movement
-    if (elapsedTime <= SERVO_MOVEMENT_DURATION) {   
-      float progress = float(elapsedTime) / SERVO_MOVEMENT_DURATION;            // calculate movement progress (0-1)
-      int targetAngle = map(progress, 0, 1, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);  // calculate target servo angle based on progress
-      Serial.println(targetAngle); 
-      my_servo.write(targetAngle);                                               // move the servo to the target angle
-      delay(SERVO_MOVEMENT_INTERVAL);                                           // wait for servo movement interval
-    } else {                                                                    // if servo movement is complete
-      servoTimer = millis();                                                    // reset the servo timer
-    }
-  }
+    my_servo.write(goc); 
+    if(goc == 180) {
+      isPlus = false;
+    } else if(goc == 0) {
+      isPlus = true;
+    } 
+    if(isPlus) {
+      goc +=1;
+    }   else {
+      goc -=1;
+    }   
+    Serial.println(goc)     ;  
+    delay(15);                    
 }
 
 
 void readDataFromEsp() {
-  // while (unoEspSerial.available()) {
 
-  //   char readChar = (char)unoEspSerial.read();
-  //   if (readChar != '\n') {
-  //     dataRead += readChar;
-  //   } else {
-  //     handleJsonData(dataRead);
-  //     dataRead = "";
-  //     // espConnected = true;
-  //   }
-  // }
   if (unoEspSerial.available()) {
     String dataRead = unoEspSerial.readString();
     handleJsonData(dataRead);
@@ -142,34 +124,6 @@ void readDataFromEsp() {
   }
 }
 
-// const turnOnRotate() {
-//   while (enable_rotate) {
-//     if (enable_rotate) {
-//       Serial.print(enable_rotate);
-//       my_servo.write(goc);
-//       goc = my_servo.read();
-//       Serial.print("Góc hiện tại: ");
-//       Serial.println(goc);
-//       if (goc >= max) {
-//         isMinus = true;
-//       }
-//       if (goc <= min) {
-//         isMinus = false;
-//       }
-//       if (isMinus) {
-//         goc -= 5;
-//       } else {
-//         goc += 5;
-//       }
-//       Serial.println(goc);
-//       delay(100);
-//     }
-//   };
-// }
-
-// const turnOffRotate() {
-//   enableRotate = false;
-// }
 
 
 
@@ -222,11 +176,15 @@ void handleJsonData(String data) {
 };
 
 void controlFanState() {
-  if (fan_enable) {
-    ON_FAN;
-    // analogWrite(FAN_CONTROL_PIN, 1000);
-    // controlFanSpeed();
-  } else OFF_FAN;
+  if(fan_enable != prev_fan_enable) {
+    if (fan_enable) {
+        ON_FAN;
+        // analogWrite(FAN_CONTROL_PIN, 1000);
+        // controlFanSpeed();
+      } else OFF_FAN;
+    prev_fan_enable = fan_enable;
+  }
+  
 }
 
 void controlServo() {
@@ -235,26 +193,26 @@ void controlServo() {
 void controlFanSpeed() {
   switch (fan_speed) {
     case 1:
-      Serial.println(1);
+      // Serial.println(1);
       analogWrite(FAN_CONTROL_PIN, 300);
       break;
     case 2:
-      Serial.println(2);
+      // Serial.println(2);
       analogWrite(FAN_CONTROL_PIN, 700);
       break;
     case 3:
-      Serial.println(3);
+      // Serial.println(3);
       analogWrite(FAN_CONTROL_PIN, 1023);
       break;
   }
 }
 
 void readTemp() {
-  delay(1000);
+  // delay(1000);
   temp_measure = dht.readTemperature();
-  Serial.println(temp_measure);
+  // Serial.println(temp_measure);
   if (abs(temp_measure - temp_measure_old) >= 0.1 && espConnected) {
-    Serial.println(temp_measure - temp_measure_old);
+    // Serial.println(temp_measure - temp_measure_old);
     temp_measure_old = temp_measure;
     String dataSend = jsonWriteOne(KEY_DATA_TEMP_MEASURE, String(temp_measure));
     sendUart(dataSend);
