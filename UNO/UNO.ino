@@ -20,15 +20,16 @@ int fan_speed = 1;
 
 
 // servo config
-int servo = 9;
+int servo = 6;
 int goc = 0;
-Servo myServo;
-bool servoEnabled = false;                // servo enabled flag
+Servo my_servo;
+bool servoEnabled = true;   
+bool enable_rotate = false;            // servo enabled flag
 unsigned long servoTimer = 0;             // servo timer
 const int SERVO_MIN_ANGLE = 0;            // minimum servo angle
 const int SERVO_MAX_ANGLE = 180;          // maximum servo angle
 const int SERVO_MOVEMENT_DURATION = 500;  // duration of servo movement
-const int SERVO_MOVEMENT_INTERVAL = 10;   // interval between servo movements
+const int SERVO_MOVEMENT_INTERVAL = 100;   // interval between servo movements
 
 // Cam bien hong ngoai
 const int receiverPin = A2;  // chân digital 8 dùng để đọc tín hiệu
@@ -78,7 +79,7 @@ void setup() {
   pinMode(MOSFET_PIN, mosfet_output);
   pinMode(analogPin, INPUT);
   OFF_FAN;
-  myServo.attach(servo);
+  my_servo.attach(servo);
   dht.begin();
 }
 
@@ -93,12 +94,27 @@ void loop() {
   // controlFanState();
   // controlFanSpeed();
   // if the servo is enabled, move it smoothly back and forth
+    //   my_servo.write(0);
+    // goc = my_servo.read();
+    // Serial.print("Góc hiện tại: "); Serial.println(goc);
+    // delay(1000);
+  
+    // my_servo.write(90);
+    // goc = my_servo.read();
+    // Serial.print("Góc hiện tại: "); Serial.println(goc);
+    // delay(1000);
+  
+    // my_servo.write(180);
+    // goc = my_servo.read();
+    // Serial.print("Góc hiện tại: "); Serial.println(goc);
+    // delay(1000);
   if (servoEnabled) {
-    unsigned long elapsedTime = millis() - servoTimer;                          // calculate elapsed time since last servo movement
-    if (elapsedTime <= SERVO_MOVEMENT_DURATION) {                               // if servo movement is not complete
+    unsigned long elapsedTime = millis() - servoTimer;                      // calculate elapsed time since last servo movement
+    if (elapsedTime <= SERVO_MOVEMENT_DURATION) {   
       float progress = float(elapsedTime) / SERVO_MOVEMENT_DURATION;            // calculate movement progress (0-1)
       int targetAngle = map(progress, 0, 1, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);  // calculate target servo angle based on progress
-      myservo.write(targetAngle);                                               // move the servo to the target angle
+      Serial.println(targetAngle); 
+      my_servo.write(targetAngle);                                               // move the servo to the target angle
       delay(SERVO_MOVEMENT_INTERVAL);                                           // wait for servo movement interval
     } else {                                                                    // if servo movement is complete
       servoTimer = millis();                                                    // reset the servo timer
@@ -126,34 +142,34 @@ void readDataFromEsp() {
   }
 }
 
-const turnOnRotate() {
-  while (enableRotate) {
-    if (enableRotate) {
-      Serial.print(enableRotate);
-      myServo.write(goc);
-      goc = myServo.read();
-      Serial.print("Góc hiện tại: ");
-      Serial.println(goc);
-      if (goc >= max) {
-        isMinus = true;
-      }
-      if (goc <= min) {
-        isMinus = false;
-      }
-      if (isMinus) {
-        goc -= 5;
-      } else {
-        goc += 5;
-      }
-      Serial.println(goc);
-      delay(100);
-    }
-  };
-}
+// const turnOnRotate() {
+//   while (enable_rotate) {
+//     if (enable_rotate) {
+//       Serial.print(enable_rotate);
+//       my_servo.write(goc);
+//       goc = my_servo.read();
+//       Serial.print("Góc hiện tại: ");
+//       Serial.println(goc);
+//       if (goc >= max) {
+//         isMinus = true;
+//       }
+//       if (goc <= min) {
+//         isMinus = false;
+//       }
+//       if (isMinus) {
+//         goc -= 5;
+//       } else {
+//         goc += 5;
+//       }
+//       Serial.println(goc);
+//       delay(100);
+//     }
+//   };
+// }
 
-const turnOffRotate() {
-  enableRotate = false;
-}
+// const turnOffRotate() {
+//   enableRotate = false;
+// }
 
 
 
