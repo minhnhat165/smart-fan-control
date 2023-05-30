@@ -31,31 +31,16 @@ int angle = 90;
 int prev_angle = 0;
 bool isPlus = true;
 
-// Speed configuration
-#define SPEED_ONE 300
-#define SPEED_TWO 700
-#define SPEED_THREE 1023
-
-bool speed_auto;
-int speed_current;
-int speed_prev = 0;
-float speed_one_max;
-float speed_two_max;
-
 // IR receiver configuration
 const int receiverPin = 5;
-IRrecv irrecv(receiverPin);
-decode_results results;
+// IRrecv irrecv(receiverPin);
+// decode_results results;
 
 // JSON key constants
 #define KEY_DATA_FAN_ENABLE "fe"
 #define KEY_DATA_ANGLE_AUTO "aa"
 #define KEY_DATA_ANGLE_CURRENT "ac"
 #define KEY_DATA_ANGLE_SPEED "as"
-#define KEY_DATA_SPEED_AUTO "sa"
-#define KEY_DATA_SPEED_CURRENT "sc"
-#define KEY_DATA_SPEED_ONE_MAX "som"
-#define KEY_DATA_SPEED_TWO_MAX "stm"
 #define KEY_DATA_TEMP_CURRENT "tc"
 #define KEY_DATA_TEMP_ENABLE "te"
 #define KEY_DATA_TEMP_THRESHOLD "tt"
@@ -78,7 +63,8 @@ bool espConnected = false;
 void setup() {
   Serial.begin(9600);
   unoEspSerial.begin(9600);
-  irrecv.enableIRIn();
+  // irrecv.enableIRIn();
+  IrReceiver.begin(receiverPin);
   pinMode(FAN_CONTROL_PIN, OUTPUT);
   OFF_FAN;
   servo.attach(servoPin);
@@ -144,7 +130,7 @@ void handleJsonData(String data) {
     Serial.println("fan enable " + data);
   }
   //TEMP
-   if (root.containsKey(KEY_DATA_TEMP_ENABLE)) {
+  if (root.containsKey(KEY_DATA_TEMP_ENABLE)) {
     String data = root[KEY_DATA_TEMP_ENABLE];
     temp_enable = stringToBool(data);
     Serial.println("temp enable " + data);
@@ -153,27 +139,6 @@ void handleJsonData(String data) {
     String data = root[KEY_DATA_TEMP_THRESHOLD];
     temp_threshold = data.toFloat();
     Serial.println("temp threshold " + data);
-  }
-  //SPEED
-  if (root.containsKey(KEY_DATA_SPEED_CURRENT)) {
-    String data = root[KEY_DATA_SPEED_CURRENT];
-    speed_current = data.toInt();
-    Serial.println("speed " + data);
-  }
-  if (root.containsKey(KEY_DATA_SPEED_AUTO)) {
-    String data = root[KEY_DATA_SPEED_AUTO];
-    speed_auto = stringToBool(data);
-    Serial.println("auto " + data);
-  }
-  if (root.containsKey(KEY_DATA_SPEED_ONE_MAX)) {
-    String data = root[KEY_DATA_SPEED_ONE_MAX];
-    speed_one_max = data.toFloat();
-    Serial.println("speed one max" + data);
-  }
-  if (root.containsKey(KEY_DATA_SPEED_TWO_MAX)) {
-    String data = root[KEY_DATA_SPEED_TWO_MAX];
-    speed_two_max = data.toFloat();
-    Serial.println("speed two max" + data);
   }
 
   // ANGLE
@@ -252,50 +217,25 @@ void controlServo() {
 }
 
 void controlByTemp() {
-  if (!temp_enable) return;
-  if (temp_current > temp_threshold) {
-    if (fan_enable) return;
-    fan_enable = true;
-    String dataSend = jsonWriteOne(KEY_DATA_FAN_ENABLE, boolToString(fan_enable));  // send new value
-    sendUart(dataSend);
-  } else {
-    if (!fan_enable) return;
-    fan_enable = false;
-    Serial.println("off");
-    String dataSend = jsonWriteOne(KEY_DATA_FAN_ENABLE, boolToString(fan_enable));  // send new value
-    sendUart(dataSend);
+  if (temp_enable) {
+    if (temp_current > temp_threshold) {
+      if (!fan_enable) {
+        fan_enable = true;
+        Serial.println("on");
+        delay(500);
+        sendUart(jsonWriteOne(KEY_DATA_FAN_ENABLE, boolToString(fan_enable)));
+      }
+
+    } else {
+      if (fan_enable) {
+        fan_enable = false;
+        Serial.println("off");
+        delay(500);
+        sendUart(jsonWriteOne(KEY_DATA_FAN_ENABLE, boolToString(fan_enable)));
+      };
+    }
   }
 }
-
-
-// void controlFanSpeed() {
-//   if (speed_auto) {
-//     if (temp_current <= speed_one_max) {
-//       speed_current = 1;
-//     } else if (temp_current <= speed_two_max) {
-//       speed_current = 2;
-//     } else {
-//       speed_current = 3;
-
-//     }
-//   }
-//   if (speed_prev != speed_current) {
-//     switch (speed_current) {
-//       case 1:
-//         // analogWrite(FAN_CONTROL_PIN, SPEED_ONE);
-//         break;
-//       case 2:
-//         // analogWrite(FAN_CONTROL_PIN, SPEED_TWO);
-//         break;
-//       case 3:
-//         // analogWrite(FAN_CONTROL_PIN, SPEED_THREE);
-//         break;
-//     }
-//     speed_prev = speed_current;
-//     Serial.println(speed_current);
-//     sendUart(jsonWriteOne(KEY_DATA_SPEED_CURRENT, String(speed_current)));
-//   }
-// }
 
 
 void readTemp() {
@@ -309,47 +249,27 @@ void readTemp() {
 
 
 void controlByRemote() {
-  if (irrecv.decode(&results))  // nếu nhận được tín hiệu
-  {
-    unsigned int value = results.value;
-    Serial.println(value);
+  // if (irrecv.decode(&results))  // nếu nhận được tín hiệu
+  // {
+  if (IrReceiver.decode()) {
+    // unsigned int value = results.value;
+    unsigned int value = IrReceiver.decodedIRData.command;
     switch (value) {
-      case 26775:
-      case 65535:
+      case 22:
         fan_enable = !fan_enable;
         sendUart(jsonWriteOne(KEY_DATA_FAN_ENABLE, boolToString(fan_enable)));
         delay(500);
         break;
-      case 4335:
-        speed_auto = !speed_auto;
-        sendUart(jsonWriteOne(KEY_DATA_SPEED_AUTO, boolToString(speed_auto)));
-        delay(500);
-        break;
-      case 17085:
-        speed_auto = false;
-        sendUart(jsonWriteOne(KEY_DATA_SPEED_AUTO, boolToString(speed_auto)));
-        speed_current = 1;
-        break;
-      case 19125:
-        speed_auto = false;
-        sendUart(jsonWriteOne(KEY_DATA_SPEED_AUTO, boolToString(speed_auto)));
-        speed_current = 2;
-        break;
-      case 21165:
-        speed_auto = false;
-        sendUart(jsonWriteOne(KEY_DATA_SPEED_AUTO, boolToString(speed_auto)));
-        speed_current = 3;
-        break;
-      case 39015:
+      case 67:
         servo_auto = !servo_auto;
         sendUart(jsonWriteOne(KEY_DATA_ANGLE_AUTO, boolToString(servo_auto)));
-        sendUart(jsonWriteOne(KEY_DATA_ANGLE_CURRENT, String(angle)));
         prev_angle = angle;
         delay(500);
         break;
     }
+    IrReceiver.resume();
   }
-  irrecv.resume();  // Receive the next value
+  // irrecv.resume();  // Receive the next value
 }
 
 

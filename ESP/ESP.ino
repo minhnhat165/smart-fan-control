@@ -7,19 +7,12 @@
 
 
 // ANGLE
-bool angle_auto;
+bool angle_auto = false;
 int angle_current;
-int angle_speed;
+int angle_speed = 3;
 // FAN
 bool fan_enable;
 bool fan_auto;
-
-
-//SPEED
-bool speed_auto;
-int speed_current;
-float speed_one_max;
-float speed_two_max;
 
 // TEMP
 float temp_current;
@@ -30,6 +23,7 @@ float temp_threshold;
 String timer_start;
 String timer_end;
 String system_time;
+bool isDuration = false;
 
 
 
@@ -41,18 +35,10 @@ bool firstSendDataToUno = false;
 //FAN
 #define KEY_DATA_FAN_ENABLE "fe"
 
-
 //ANGLE
 #define KEY_DATA_ANGLE_AUTO "aa"
 #define KEY_DATA_ANGLE_CURRENT "ac"
 #define KEY_DATA_ANGLE_SPEED "as"
-
-// SPEED
-
-#define KEY_DATA_SPEED_AUTO "sa"
-#define KEY_DATA_SPEED_CURRENT "sc"
-#define KEY_DATA_SPEED_ONE_MAX "som"
-#define KEY_DATA_SPEED_TWO_MAX "stm"
 
 // TEMP
 #define KEY_DATA_TEMP_ENABLE "te"
@@ -72,28 +58,17 @@ bool firstSendDataToUno = false;
 #define FIREBASE_FAN_AUTO FIREBASE_FAN + String("/auto")
 #define FIREBASE_FAN_ENABLE FIREBASE_FAN + String("/enable")
 
-// SPEED
-#define FIREBASE_SPEED "/speed"
-#define FIREBASE_SPEED_AUTO FIREBASE_SPEED + String("/auto")
-#define FIREBASE_SPEED_CURRENT FIREBASE_SPEED + String("/current")
-#define FIREBASE_SPEED_ONE_MAX FIREBASE_SPEED + String("/one/max")
-#define FIREBASE_SPEED_TWO_MAX FIREBASE_SPEED + String("/two/max")
 // TEMP
 #define FIREBASE_TEMP "/temp"
 #define FIREBASE_TEMP_CURRENT FIREBASE_TEMP + String("/current")
 #define FIREBASE_TEMP_ENABLE FIREBASE_TEMP + String("/auto")
-#define FIREBASE_TEMP_THREShOLD FIREBASE_TEMP + String("/threshold")
+#define FIREBASE_TEMP_THRESHOLD FIREBASE_TEMP + String("/threshold")
 
 // timer
-
 #define FIREBASE_TIMER "/timer"
 #define FIREBASE_TIMER_START FIREBASE_TIMER + String("/start")
 #define FIREBASE_TIMER_END FIREBASE_TIMER + String("/end")
-
-
-
-
-
+#define FIREBASE_TIMER_IS_DURATION FIREBASE_TIMER + String("/isDuration")
 
 #define RX D5
 #define TX D6
@@ -101,10 +76,10 @@ SoftwareSerial unoEspSerial = SoftwareSerial(RX, TX);
 
 #define FIREBASE_HOST "blog-nodv-default-rtdb.asia-southeast1.firebasedatabase.app"
 #define FIREBASE_AUTH "LmIMgwMtJxBa6cUlhQGF14HnfC38F7rgpUGtcLb0"
-// #define WIFI_SSID "Mien Phi_2.4G"
-// #define WIFI_PASSWORD "nhapvodi"
-#define WIFI_SSID "PTIT.HCM_CanBo"
-#define WIFI_PASSWORD ""
+#define WIFI_SSID "Mien Phi_2.4G"
+#define WIFI_PASSWORD "nhapvodi"
+// #define WIFI_SSID "PTIT.HCM_CanBo"
+// #define WIFI_PASSWORD ""
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
@@ -119,6 +94,7 @@ void setup() {
     Serial.print(".");
     delay(500);
   }
+  Serial.print("success");
   //connect filebase
   Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
   timeClient.begin();
@@ -177,16 +153,9 @@ String hasChangeFirebaseJson() {
   bool new_angle_auto = Firebase.getBool(FIREBASE_ANGLE_AUTO);
   int new_angle_current = Firebase.getInt(FIREBASE_ANGLE_CURRENT);
   int new_angle_speed = Firebase.getInt(FIREBASE_ANGLE_SPEED);
-
-  //SPEED
-  bool new_speed_auto = Firebase.getBool(FIREBASE_SPEED_AUTO);
-  int new_speed_current = Firebase.getInt(FIREBASE_SPEED_CURRENT);
-  float new_speed_one_max = Firebase.getFloat(FIREBASE_SPEED_ONE_MAX);
-  float new_speed_two_max = Firebase.getFloat(FIREBASE_SPEED_TWO_MAX);
   //TEMP
   bool new_temp_enable = Firebase.getBool(FIREBASE_TEMP_ENABLE);
-  float new_temp_threshold = Firebase.getFloat(FIREBASE_TEMP_THREShOLD);
-
+  float new_temp_threshold = Firebase.getFloat(FIREBASE_TEMP_THRESHOLD);
 
   DynamicJsonBuffer jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
@@ -201,10 +170,10 @@ String hasChangeFirebaseJson() {
     // ANGLE
     angle_auto = new_angle_auto;
     root[KEY_DATA_ANGLE_AUTO] = angle_auto;
-    angle_current = new_angle_current;
-    root[KEY_DATA_ANGLE_CURRENT] = angle_auto;
-    angle_speed = new_angle_speed;
-    root[KEY_DATA_ANGLE_SPEED] = angle_speed;
+    // angle_current = new_angle_current;
+    // root[KEY_DATA_ANGLE_CURRENT] = angle_auto;
+    // angle_speed = new_angle_speed;
+    // root[KEY_DATA_ANGLE_SPEED] = angle_speed;
 
     // TEMP
     temp_enable = new_temp_enable;
@@ -212,16 +181,6 @@ String hasChangeFirebaseJson() {
     temp_threshold = new_temp_threshold;
     root[KEY_DATA_TEMP_THRESHOLD] = temp_threshold;
     fan_enable = new_fan_enable;
-
-    // // SPEED
-    // speed_auto = new_angle_auto;
-    // root[KEY_DATA_SPEED_AUTO] = speed_auto;
-    // speed_current = new_speed_current;
-    // root[KEY_DATA_SPEED_CURRENT] = speed_current;
-    // speed_one_max = new_speed_one_max;
-    // root[KEY_DATA_SPEED_ONE_MAX] = speed_one_max;
-    // speed_two_max = new_speed_two_max;
-    // root[KEY_DATA_SPEED_TWO_MAX] = speed_two_max;
 
     isChange = true;
     firstSendDataToUno = true;
@@ -262,31 +221,6 @@ String hasChangeFirebaseJson() {
       root[KEY_DATA_ANGLE_SPEED] = angle_speed;
       isChange = true;
     }
-
-    // SPEED
-    if (new_speed_auto != speed_auto) {
-      speed_auto = new_speed_auto;
-      root[KEY_DATA_SPEED_AUTO] = speed_auto;
-      isChange = true;
-    }
-
-    if (new_speed_current != speed_current) {
-      speed_current = new_speed_current;
-      root[KEY_DATA_SPEED_CURRENT] = speed_current;
-      isChange = true;
-    }
-
-    if (new_speed_one_max != speed_one_max) {
-      speed_one_max = new_speed_one_max;
-      root[KEY_DATA_SPEED_ONE_MAX] = speed_one_max;
-      isChange = true;
-    }
-
-    if (new_speed_two_max != speed_two_max) {
-      speed_two_max = new_speed_two_max;
-      root[KEY_DATA_SPEED_TWO_MAX] = speed_two_max;
-      isChange = true;
-    }
   }
 
   if (!isChange) return "";
@@ -309,7 +243,7 @@ void handleJsonData(String data) {
 
   if (root.containsKey(KEY_DATA_FAN_ENABLE)) {
     String data = root[KEY_DATA_FAN_ENABLE];
-    Firebase.setBool(FIREBASE_FAN_AUTO, stringToBool(data));
+    Firebase.setBool(FIREBASE_FAN_ENABLE, stringToBool(data));
   }
 
   // ANGLE
@@ -328,19 +262,6 @@ void handleJsonData(String data) {
     String data = root[KEY_DATA_ANGLE_SPEED];
     Firebase.setInt(FIREBASE_ANGLE_SPEED, data.toInt());
   }
-
-
-  // SPEED
-  if (root.containsKey(KEY_DATA_SPEED_AUTO)) {
-    String data = root[KEY_DATA_SPEED_AUTO];
-    Firebase.setBool(FIREBASE_SPEED_AUTO, stringToBool(data));
-  }
-
-  if (root.containsKey(KEY_DATA_SPEED_CURRENT)) {
-    String data = root[KEY_DATA_SPEED_CURRENT];
-    Firebase.setInt(FIREBASE_SPEED_CURRENT, data.toInt());
-  }
-
 
   //TEMP
   if (root.containsKey(KEY_DATA_TEMP_CURRENT)) {
@@ -364,19 +285,15 @@ void controlByTime() {
     setSystemTime();
     timer_start = Firebase.getString(FIREBASE_TIMER_START);
     timer_end = Firebase.getString(FIREBASE_TIMER_END);
-    Serial.print(system_time + " " + timer_start);
+    Serial.println(system_time + " " + timer_start);
     if (system_time == timer_start) {
       Firebase.setBool(FIREBASE_FAN_ENABLE, true);
-
     } else if (system_time == timer_end) {
       Firebase.setBool(FIREBASE_FAN_ENABLE, false);
     }
     delay(500);
   }
 }
-
-
-
 
 bool stringToBool(String value) {
   if (value == "true") return true;
